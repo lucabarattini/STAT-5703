@@ -1,0 +1,345 @@
+---
+title: "STAT 5703 - HW 4"
+format: html
+---
+
+```{r}
+# =====================================================================
+# Setup
+# Load the required library in a single command
+# Load the data and assign it a sensible variable name
+# =====================================================================
+timber_data <- trees
+timber_data
+```
+
+```{r}
+# =====================================================================
+# Part A
+# Obtain and print the scatterplot matrix of all variables
+# =====================================================================
+pairs(timber_data)
+```
+
+```{r}
+# =====================================================================
+# Part B
+# Check the normal distribution of the response variable Volume
+# Generate a Q-Q plot and run a Shapiro-Wilk hypothesis test
+# =====================================================================
+qqnorm(timber_data$Volume)
+qqline(timber_data$Volume)
+
+shapiro.test(timber_data$Volume)
+```
+
+```{r}
+# =====================================================================
+# Part C
+# Fit regular multiple regression model on log-transformed predictors
+# Output the summary to check predictor significance
+# =====================================================================
+model_lm <- lm(Volume ~ log(Girth) + log(Height), data = timber_data)
+summary(model_lm)
+```
+
+```{r}
+# =====================================================================
+# Part D
+# Fit Gamma GLM with log link predicting Volume with intercept only
+# Report the residual deviance
+# =====================================================================
+model_gamma_null <- glm(Volume ~ 1, family = Gamma(link = "log"), data = timber_data)
+summary(model_gamma_null)$deviance
+```
+
+```{r}
+# =====================================================================
+# Part E
+# Fit Gamma GLM with log link predicting Volume by log(Girth)
+# Report the residual deviance
+# =====================================================================
+model_gamma_girth <- glm(Volume ~ log(Girth), family = Gamma(link = "log"), data = timber_data)
+summary(model_gamma_girth)$deviance
+```
+
+```{r}
+# =====================================================================
+# Part F
+# Fit Gamma GLM with log link predicting Volume by log(Girth) and log(Height)
+# Report the residual deviance
+# =====================================================================
+model_gamma_full <- glm(Volume ~ log(Girth) + log(Height), family = Gamma(link = "log"), data = timber_data) 
+summary(model_gamma_full)$deviance
+```
+
+```{r}
+# =====================================================================
+# Part G
+# Approximate F-test comparing model from part E to part D
+# The anova() function with test="F" automatically uses the Pearson 
+# estimate of dispersion from the larger model
+# =====================================================================
+anova(model_gamma_null, model_gamma_girth, test = "F")
+```
+
+```{r}
+# =====================================================================
+# Part H
+# Approximate F-test comparing model from part F to part E
+# Using Pearson estimate of dispersion from the larger model
+# =====================================================================
+anova(model_gamma_girth, model_gamma_full, test = "F")
+```
+
+---
+
+```{r}
+#| message: false
+#| warning: false
+library(lme4)
+library(dplyr)
+library(ggplot2)
+
+source("Recitation8.R")
+```
+
+```{r}
+# =====================================================================
+# Part A
+# Fit random intercepts and random slopes model: 
+# Effect of ses.dev on mathach varies between schools
+# =====================================================================
+model_2a <- lmer(mathach ~ ses.dev + (ses.dev | school), data = df)
+
+# Report the variance components
+summary(model_2a)
+```
+
+```{r}
+VarCorr(model_2a)
+```
+
+
+```{r}
+# =====================================================================
+# Part B
+# Include contextual variables mean.ses and sector as fixed effects
+# =====================================================================
+model_2b <- lmer(mathach ~ ses.dev + mean.ses + sector + (ses.dev | school), data = df)
+
+summary(model_2b)
+```
+
+```{r}
+# =====================================================================
+# Part C
+# Keep ses.dev slope fixed (random-intercept only model)
+# =====================================================================
+model_2c <- lmer(mathach ~ ses.dev + mean.ses + sector + (1 | school), data = df)
+
+summary(model_2c)
+```
+
+```{r}
+fixef(model_2c)
+```
+
+
+```{r}
+# =====================================================================
+# Part D
+# Compare Model 2c (reduced) with Model 2b (full) 
+# using a Likelihood Ratio Test
+# =====================================================================
+anova(model_2c, model_2b)
+```
+
+```{r}
+# =====================================================================
+# Part E
+# Identify the "best 5" schools based on their intercepts 
+# (fixed intercept + random intercept)
+# =====================================================================
+# The coef() function automatically adds the fixed intercept and random 
+# effects together for each group.
+school_intercepts <- coef(model_2c)$school
+
+# Extract just the intercepts and keep school IDs
+school_intercepts_df <- data.frame(
+  school = rownames(school_intercepts),
+  Total_Intercept = school_intercepts$`(Intercept)`
+)
+
+# Sort descending to find the top 5
+top_5_schools <- school_intercepts_df %>%
+  arrange(desc(Total_Intercept)) %>%
+  head(5)
+
+print(top_5_schools)
+```
+
+```{r}
+# =====================================================================
+# Part F
+# Visualize random intercept distribution by sector with a boxplot
+# =====================================================================
+# First, we need to map the school sector back to our intercepts dataset
+school_sectors <- df %>%
+  select(school, sector) %>%
+  distinct()
+
+# Merge the total intercepts with the sector information
+plot_data <- merge(school_intercepts_df, school_sectors, by = "school")
+
+# Create the side-by-side boxplot
+ggplot(plot_data, aes(x = sector, y = Total_Intercept, fill = sector)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Distribution of School Intercepts by Sector",
+    x = "School Sector",
+    y = "Estimated School Intercept (Fixed + Random)"
+  ) +
+  theme(legend.position = "none")
+```
+```{r}
+# =====================================================================
+# Problem 4 Setup
+# Define global parameters and number of replications
+# =====================================================================
+R <- 100000       # Number of simulations
+beta0 <- 10       # True intercept
+beta1 <- 1        # True slope
+n_vals <- c(25, 50, 100)
+```
+
+```{r}
+# =====================================================================
+# Part a) Data Generation & Average x
+# Set seed, simulate x values once, and report averages
+# =====================================================================
+set.seed(549)
+
+# Generate and store x values in a list so they remain fixed
+x_list <- list()
+for (n in n_vals) {
+  x_list[[as.character(n)]] <- rnorm(n, mean = 0, sd = 1)
+}
+
+# Calculate and print the average of x for each sample size
+x_averages <- sapply(x_list, mean)
+print("Average x values for n = 25, 50, 100:")
+print(x_averages)
+```
+
+```{r}
+# =====================================================================
+# Part b & c) Baseline Simulation (n=25, gamma=0)
+# =====================================================================
+n <- 25
+gamma <- 0
+x <- x_list[[as.character(n)]]
+
+# 1. Calculate standard deviations (sqrt of variance)
+sd_eps <- sqrt(exp(gamma * x))
+
+# 2. Simulate errors (100,000 columns, 25 rows)
+eps_mat <- matrix(rnorm(n * R, mean = 0, sd = sd_eps), nrow = n, ncol = R)
+
+# 3. Compute responses Y
+y_mat <- beta0 + beta1 * x + eps_mat
+
+# 4. Fast Matrix OLS: beta_hat = (X'X)^(-1) X' Y
+X_mat <- cbind(1, x)
+H <- solve(t(X_mat) %*% X_mat) %*% t(X_mat)  # Projection matrix
+beta_hats <- H %*% y_mat                     # Computes 100,000 regressions instantly
+
+# Calculate and print averages
+avg_beta0 <- mean(beta_hats[1, ])
+avg_beta1 <- mean(beta_hats[2, ])
+
+cat("Baseline Simulation (n=25, gamma=0)\n")
+cat("Average Beta_0:", avg_beta0, "(True = 10)\n")
+cat("Average Beta_1:", avg_beta1, "(True = 1)\n")
+```
+
+```{r}
+# =====================================================================
+# Part d) Expanded Heteroskedasticity Simulation
+# Loop through all combinations of gamma and n
+# =====================================================================
+gamma_vals <- c(0, 1, 2)
+results_het <- expand.grid(n = n_vals, gamma = gamma_vals)
+results_het$avg_beta0 <- NA
+results_het$avg_beta1 <- NA
+
+for (i in 1:nrow(results_het)) {
+  n <- results_het$n[i]
+  g <- results_het$gamma[i]
+  x <- x_list[[as.character(n)]]
+  
+  sd_eps <- sqrt(exp(g * x))
+  eps_mat <- matrix(rnorm(n * R, mean = 0, sd = sd_eps), nrow = n, ncol = R)
+  y_mat <- beta0 + beta1 * x + eps_mat
+  
+  X_mat <- cbind(1, x)
+  H <- solve(t(X_mat) %*% X_mat) %*% t(X_mat)
+  beta_hats <- H %*% y_mat
+  
+  results_het$avg_beta0[i] <- mean(beta_hats[1, ])
+  results_het$avg_beta1[i] <- mean(beta_hats[2, ])
+}
+
+print("Heteroskedasticity Simulation Results:")
+print(results_het)
+```
+
+```{r}
+# =====================================================================
+# Part e) Autoregression Model Simulation
+# Loop through all combinations of rho and n
+# =====================================================================
+rho_vals <- c(0, 0.5, 0.9)
+results_ar <- expand.grid(n = n_vals, rho = rho_vals)
+results_ar$avg_beta0 <- NA
+results_ar$avg_beta1 <- NA
+
+for (i in 1:nrow(results_ar)) {
+  n <- results_ar$n[i]
+  rho <- results_ar$rho[i]
+  x <- x_list[[as.character(n)]]
+  
+  # Initialize error matrix
+  eps_mat <- matrix(0, nrow = n, ncol = R)
+  eps_mat[1, ] <- 3  # Set epsilon_1 = 3 for all 100,000 paths
+  
+  # Generate standard normal u_i
+  u_mat <- matrix(rnorm((n - 1) * R, mean = 0, sd = 1), nrow = n - 1, ncol = R)
+  
+  # Build the autoregressive series iteratively
+  for (j in 2:n) {
+    eps_mat[j, ] <- rho * eps_mat[j - 1, ] + u_mat[j - 1, ]
+  }
+  
+  y_mat <- beta0 + beta1 * x + eps_mat
+  
+  X_mat <- cbind(1, x)
+  H <- solve(t(X_mat) %*% X_mat) %*% t(X_mat)
+  beta_hats <- H %*% y_mat
+  
+  results_ar$avg_beta0[i] <- mean(beta_hats[1, ])
+  results_ar$avg_beta1[i] <- mean(beta_hats[2, ])
+}
+
+print("Autoregression Simulation Results:")
+print(results_ar)
+```
+
+
+
+
+
+
+
+
